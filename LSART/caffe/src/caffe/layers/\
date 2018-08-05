@@ -1,0 +1,108 @@
+#include <vector>
+
+#include "caffe/filler.hpp"
+#include "caffe/layer.hpp"
+#include "caffe/util/im2col.hpp"
+#include "caffe/util/math_functions.hpp"
+#include "caffe/vision_layers.hpp"
+
+namespace caffe {
+
+
+template <typename Dtype>
+void WtfLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+      const vector<Blob<Dtype>*>& top) {
+  const Dtype* weight = this->blobs_[0]->gpu_data();
+      //  printf("this values is %d-> %d-> %d-> %d\n\n",this->blobs_[0]->num(), this->blobs_[0]->channels(),this->blobs_[0]->height(),this->blobs_[0]->width());
+         // sleep(10);
+  for (int i = 0; i < bottom.size(); ++i) {
+    const Dtype* bottom_data = bottom[i]->gpu_data();
+    Dtype* top_data = top[i]->mutable_gpu_data();
+//首先我们得到模板
+    float *  data= Layer<float>::input[0]->mutable_cpu_data();
+//然后我们将模板改写成列的形式
+const float *data1= Layer<float>::input[1]->cpu_data();
+
+ //im2col_gpu(data, conv_in_channels_, conv_in_height_, conv_in_width_,
+   //     kernel_h_, kernel_w_, pad_h_, pad_w_, stride_h_, stride_w_, col_buff, kstride_h_, kstride_w_);
+    for (int n = 0; n < this->num_; ++n) {
+      this->forward_gpu_gemm(bottom_data + bottom[i]->offset(n), weight,
+          top_data + top[i]->offset(n));
+      if (this->has_mask_ && this->phase_ == TRAIN) {
+	const unsigned int* mask = this->mask_.gpu_data();
+	this->forward_gpu_mask(top_data + top[i]->offset(n), mask);
+      }
+      if (this->bias_term_) {
+        const Dtype* bias = this->blobs_[1]->gpu_data();
+        this->forward_gpu_bias(top_data + top[i]->offset(n), bias);
+      }
+    }
+  }
+}
+
+template <typename Dtype>
+void WtfLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, const vector<Blob<Dtype>*>& bottom) {
+//  LOG(INFO) << "start of convolutionlayer backward_gpu";
+  //        sleep(10);
+  //CHECK((this->kstride_h_ == 1) && (this->kstride_w_ == 1)) << "Backward_gpu is not implemented for fully convolutin.";
+  const Dtype* weight = this->blobs_[0]->gpu_data();
+ 
+ const float *  data= Layer<float>::input[0]->gpu_data();
+          printf("we get get get here gpu version\n\n\n");
+      //    printf("the data in wtf layer is %f\n\n\n",data[0]);
+ // data中存储的是模板，接着我们尝试将data改写成列的形式
+
+ // vector<shared_ptr<Blob<Dtype> > > tmp=Layer<Dtype>::get_input();
+         // tmp[].reset(new Blob<Dtype>)
+  //        const Dtype *weight1=tmp[0]->gpu_data();
+          //Dtype* weight1 = Layer<Dtype>::input[0]->gpu_data();
+
+  Dtype* weight_diff = this->blobs_[0]->mutable_gpu_diff();
+  for (int i = 0; i < top.size(); ++i) {
+    const Dtype* top_diff = top[i]->gpu_diff();
+    Dtype* top_diff_mutable = top[i]->mutable_gpu_diff();
+    // Bias gradient, if necessary.
+    if (this->bias_term_ && this->param_propagate_down_[1]) {
+      Dtype* bias_diff = this->blobs_[1]->mutable_gpu_diff();
+      for (int n = 0; n < this->num_; ++n) {
+        this->backward_gpu_bias(bias_diff, top_diff + top[i]->offset(n));
+      }
+    }
+    // Mask
+    if (this->has_mask_ && this->phase_ == TRAIN) {
+      const unsigned int* mask = this->mask_.gpu_data();
+      for (int n = 0; n < this->num_; ++n) {
+	this->backward_gpu_mask(top_diff_mutable + top[i]->offset(n), mask);
+      }
+    }
+      
+    if (this->param_propagate_down_[0] || propagate_down[i]) {
+      const Dtype* bottom_data = bottom[i]->gpu_data();
+      Dtype* bottom_diff = bottom[i]->mutable_gpu_diff();
+      for (int n = 0; n < this->num_; ++n) {
+        // gradient w.r.t. weight. Note that we will accumulate diffs.
+        if (this->param_propagate_down_[0]) {
+	  if (this->kstride_h_ == 1) {
+	    this->weight_gpu_gemm(bottom_data + bottom[i]->offset(n),
+              top_diff + top[i]->offset(n), weight_diff);
+	  } else {
+	    this->fcn_weight_gpu_gemm(bottom_data + bottom[i]->offset(n),
+              top_diff + top[i]->offset(n), weight_diff);
+	    //LOG(INFO) << "fcn_weight_gpu_gemm";
+	  }
+        }
+        // gradient w.r.t. bottom data, if necessary.
+        if (propagate_down[i]) {
+          this->backward_gpu_gemm(top_diff + top[i]->offset(n), weight,
+              bottom_diff + bottom[i]->offset(n));
+        }
+      }
+    }
+  }
+  //LOG(INFO) << "end of convolutionlayer backward_gpu";
+}
+
+INSTANTIATE_LAYER_GPU_FUNCS(WtfLayer);
+
+}  // namespace caffe

@@ -1,0 +1,77 @@
+name: "lnet"
+force_backward: true 
+input: "data1"
+input_dim: 1
+input_dim: 41
+input_dim: 46
+input_dim: 46 
+
+layer {
+  bottom: "data1"
+  top: "my_f1"
+  name: "my_ff1"
+  type: "Wtfthird"
+#type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 5
+  }
+  param {
+    lr_mult: 2
+   decay_mult: 0
+  }
+  convolution_param {
+    num_output: 52
+    mask: true
+    group: 1
+   pad: 2
+   kernel_size: 5
+    weight_filler {
+      type: "gaussian"
+      std: 1e-7
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.1
+    }
+}
+}
+
+layer{ 
+  bottom: "my_f1"
+  top: "my_f1"
+  name: "relu5_f1"
+  type: "ReLU"
+}
+
+
+layer {
+  bottom: "my_f1"
+  top: "my_f2"
+  name: "my_ff2"
+  type: "Convolution"
+  param {
+    lr_mult: 1
+    decay_mult: 5
+  }
+  param {
+    lr_mult: 5
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 52
+    group: 52
+    pad: 1
+    kernel_size: 3
+    weight_filler {
+      type: "gaussian"
+      std: 1e-7
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+
+
